@@ -1,0 +1,88 @@
+# syntax=docker/dockerfile:1
+# Build frontend on the native platform to avoid QEMU-related issues with esbuild/webpack
+FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.26-alpine3.23 AS frontend-build
+RUN apk --no-cache add build-base git nodejs pnpm
+WORKDIR /src
+COPY package.json pnpm-lock.yaml .npmrc ./
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store pnpm install --frozen-lockfile
+COPY --exclude=.git/ . .
+RUN make frontend
+
+# Build backend for each target platform
+FROM docker.io/library/golang:1.26-alpine3.23 AS build-env
+
+ARG GITEA_VERSION
+ARG TAGS="sqlite sqlite_unlock_notify"
+ENV TAGS="bindata timetzdata $TAGS"
+ARG CGO_EXTRA_CFLAGS
+
+# Build deps
+RUN apk --no-cache add \
+    build-base \
+    git
+
+WORKDIR ${GOPATH}/src/code.gitea.io/gitea
+COPY go.mod go.sum ./
+RUN go mod download
+# See the comments in Dockerfile
+COPY --exclude=.git/ . .
+COPY --from=frontend-build /src/public/assets public/assets
+
+# Build gitfx, .git mount is required for version data
+RUN --mount=type=cache,target="/root/.cache/go-build" \
+    --mount=type=bind,source=".git/",target=".git/" \
+    make backend
+
+COPY docker/rootless /tmp/local
+
+# Set permissions for builds that made under windows which strips the executable bit from file
+RUN chmod 755 /tmp/local/usr/local/bin/* \
+              /go/src/code.gitea.io/gitea/gitfx
+
+FROM docker.io/library/alpine:3.23 AS gitfx-rootless
+
+EXPOSE 2222 3000
+
+RUN apk --no-cache add \
+    bash \
+    ca-certificates \
+    dumb-init \
+    gettext \
+    git \
+    curl \
+    gnupg \
+    openssh-keygen
+
+RUN addgroup \
+    -S -g 1000 \
+    git && \
+  adduser \
+    -S -H -D \
+    -h /var/lib/gitfx/git \
+    -s /bin/bash \
+    -u 1000 \
+    -G git \
+    git
+
+RUN mkdir -p /var/lib/gitfx /etc/gitfx
+RUN chown git:git /var/lib/gitfx /etc/gitfx
+
+COPY --from=build-env /tmp/local /
+COPY --from=build-env --chown=root:root /go/src/code.gitea.io/gitea/gitfx /app/gitfx/gitfx
+
+# git:git
+USER 1000:1000
+ENV GITEA_WORK_DIR=/var/lib/gitfx
+ENV GITEA_CUSTOM=/var/lib/gitfx/custom
+ENV GITEA_TEMP=/tmp/gitfx
+ENV TMPDIR=/tmp/gitfx
+
+# TODO add to docs the ability to define the ini to load (useful to test and revert a config)
+ENV GITEA_APP_INI=/etc/gitfx/app.ini
+ENV HOME="/var/lib/gitfx/git"
+VOLUME ["/var/lib/gitfx", "/etc/gitfx"]
+WORKDIR /var/lib/gitfx
+
+# HINT: HEALTH-CHECK-ENDPOINT: don't use HEALTHCHECK, search this hint keyword for more information
+ENTRYPOINT ["/usr/bin/dumb-init", "--", "/usr/local/bin/docker-entrypoint.sh"]
+CMD []
