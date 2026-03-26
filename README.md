@@ -2,7 +2,6 @@
 
 [![](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT "License: MIT")
 
-[繁體中文](./README.zh-tw.md) | [简体中文](./README.zh-cn.md)
 
 ## Purpose
 
@@ -32,21 +31,10 @@ Internet connectivity is required to download the go and npm modules. When build
 
 ## Using
 
-After building, a binary file named `gitea` will be generated in the root of the source tree by default. To run it, use:
+After building, a binary file named `gitfx` will be generated in the root of the source tree by default. To run it, use:
 
-    ./gitea web
+    ./gitfx web
 
-> [!NOTE]
-> If you're interested in using our APIs, we have experimental support with [documentation](https://docs.gitea.com/api).
-
-## Contributing
-
-Expected workflow is: Fork -> Patch -> Push -> Pull Request
-
-> [!NOTE]
->
-> 1. **YOU MUST READ THE [CONTRIBUTORS GUIDE](CONTRIBUTING.md) BEFORE STARTING TO WORK ON A PULL REQUEST.**
-> 2. If you have found a vulnerability in the project, please write privately to **security@gitea.io**. Thanks!
 
 ## License
 
